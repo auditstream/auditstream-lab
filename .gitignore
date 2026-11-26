@@ -1,0 +1,27 @@
+# Secrets and local cloud credentials (Neon, Supabase, Postgres)
+.env
+.env.*
+!.env.example
+
+# Packed release artifacts and local binaries
+*.tgz
+.tmp/
+bin/
+
+# Generated soak exports, cursors, and verification reports
+*.jsonl
+*.csv
+*.cursor
+*.cursor.lock
+release-verification-report.md
+soak-report.*
+
+# Node / JS build outputs
+node_modules/
+dist/
+.next/
+.turbo/
+
+# OS / editor noise
+.DS_Store
+*.log
