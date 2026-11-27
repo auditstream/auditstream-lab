@@ -44,10 +44,10 @@ Live sandbox and consumer verification lab for [Auditstream](https://auditstream
    ./scripts/smoke-interactive.sh
    ```
 
-4. Run the shared helper unit tests (Node built-in test runner, zero extra dependencies; on Node `22.12–22.17`, pass `--experimental-strip-types`):
+4. Run the unit tests (Node built-in test runner, zero extra dependencies; on Node `22.12–22.17`, pass `--experimental-strip-types`):
 
    ```sh
-   node --test tests/shared.test.ts
+   node --test tests/shared.test.ts tests/soak.test.ts
    ```
 
 ## Testing local release candidates
@@ -70,10 +70,10 @@ AUDITSTREAM_BIN=/path/to/auditstream/target/release/auditstream \
 Override defaults via the shell or a local `.env` file (see [`.env.example`](.env.example); `.env` is gitignored):
 
 - `PG_VERSION`, `PG_PORT`, `PGBOUNCER_PORT`, `PG_ADMIN_PASSWORD`, `APP_USER_PASSWORD`, `HONO_PORT`, `PRISMA_PORT`
-- `AUDITSTREAM_BIN`: path to a local executable `auditstream` binary (honored by `bootstrap.sh` and `smoke-interactive.sh`).
+- `AUDITSTREAM_BIN`: path to a local executable `auditstream` binary (honored by `bootstrap.sh`, `smoke-interactive.sh`, and `soak/run.sh`).
 - `AUDITSTREAM_JS_TGZ_DIR`: directory containing packed `@auditstream/{node,drizzle,prisma}` `.tgz` tarballs (honored by `bootstrap.sh`).
-- `AUDITSTREAM_VERSION`: pin a specific GitHub Release version such as `0.1.0` instead of `latest` (cached separately per version under `.tmp/bin/`; honored by `bootstrap.sh` and `smoke-interactive.sh`).
-- `AUDITSTREAM_FORCE_DOWNLOAD=1`: re-download the GitHub Release binary even if already cached (honored by `bootstrap.sh` and `smoke-interactive.sh`).
+- `AUDITSTREAM_VERSION`: pin a specific GitHub Release version such as `0.1.0` instead of `latest` (cached separately per version under `.tmp/bin/`; honored by `bootstrap.sh`, `smoke-interactive.sh`, and `soak/run.sh`).
+- `AUDITSTREAM_FORCE_DOWNLOAD=1`: re-download the GitHub Release binary even if already cached (honored by `bootstrap.sh`, `smoke-interactive.sh`, and `soak/run.sh`).
 - `NPM_REGISTRY`: override the npm registry URL written into staged `.npmrc` files (default `https://registry.npmjs.org/`).
 
 ## Switching PostgreSQL versions
@@ -156,6 +156,35 @@ PRISMA_URL="postgresql://postgres:postgres_dev_password@127.0.0.1:5432/lab_prism
 ```
 
 > **Note:** Demo HTTP headers (`x-demo-user`, `x-demo-agent`, `x-demo-on-behalf-of`, `x-demo-tenant`) exist solely for local sandbox exploration. Production applications must derive actors and tenants from a verified session or JWT and fail closed on unauthenticated requests.
+
+## Soak testing & invariant oracle
+
+Run the concurrent HTTP + SQL soak generator and invariant oracle against both bootstrapped apps (`hono-drizzle` and `prisma-api`) via PgBouncer (`DEFAULT_POOL_SIZE=6`) while executing incremental `auditstream export --format jsonl --cursor-file` in parallel:
+
+```sh
+./soak/run.sh --duration 30 --concurrency 20 --out /tmp/soak-report.md
+```
+
+Full 2-minute contention run (defaults: `--duration 120 --concurrency 40 --export-interval 2`):
+
+```sh
+./soak/run.sh --duration 120 --concurrency 40
+```
+
+Options:
+
+- `--duration <seconds>` — soak duration in seconds (default `120`).
+- `--concurrency <workers>` — total parallel HTTP workers split evenly across `hono-drizzle` and `prisma-api` (default `40`, min `2`).
+- `--export-interval <seconds>` — background `auditstream export --cursor-file` interval in seconds (default `2`).
+- `--out <path>` — Markdown summary report path (default `.tmp/soak/soak-report.md`).
+- `--json-out <path>` — structured JSON report path (default derived from `--out`).
+- `-h, --help` — show CLI usage and exit `0`.
+
+What the soak workload exercises and verifies:
+
+- 35 distinct human actors (`user_1..35`) and 10 delegated AI agents (`ai_agent` + `onBehalfOf`) across `INSERT`/`UPDATE`/`DELETE`, Drizzle nested `SAVEPOINT` + full `ROLLBACK`, raw `pool.query`, Prisma SQL comments + `auditTransaction()`, excluded-only `password_hash` updates, mid-flight `AbortController` cancellations, `audit.log()`, and cursor-paginated `GET /activity`.
+- Periodic `app_user` tamper attempts (`DELETE`/`UPDATE`/`INSERT` on `auditstream.changes`, asserting 100% rejection with SQLSTATE `42501`) and direct unattributed SQL writes over the same PgBouncer pool (asserting zero actor or context bleed).
+- Post-run invariant oracle verifying `0` lost or extra committed `2xx` events across both apps, `0` duplicate `event_id`s, `0` rolled-back/excluded-only/secret leaks, `0` actor mismatches or unaccounted events, `0` `auditstream=` entries across all 6 distinct pooled `pg_backend_pid()` sessions, `0` HTTP `5xx` or unexpected status responses, and `auditstream verify` exiting `0`.
 
 ## Clean teardown
 
