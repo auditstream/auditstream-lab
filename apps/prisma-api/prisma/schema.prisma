@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Invoice {
+  id           Int        @id @default(autoincrement())
+  status       String
+  total        Decimal    @default(0) @db.Decimal(12, 2)
+  passwordHash String?    @map("password_hash")
+  lineItems    LineItem[]
+
+  @@map("invoice")
+}
+
+model LineItem {
+  id          Int     @id @default(autoincrement())
+  invoiceId   Int     @map("invoice_id")
+  description String
+  amount      Decimal @db.Decimal(12, 2)
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("line_item")
+}
