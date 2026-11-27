@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:${PG_VERSION:-19}-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:-postgres_dev_password}
+      POSTGRES_DB: postgres
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:-app_dev_password}
+      PGDATA: /var/lib/postgresql/pg${PG_VERSION:-19}
+    ports:
+      - "127.0.0.1:${PG_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/lib/postgresql/data:size=1m
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql -h 127.0.0.1 -p 5432 -U \"$$POSTGRES_USER\" -d lab_drizzle -Atc 'SELECT 1' >/dev/null && PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql -h 127.0.0.1 -p 5432 -U \"$$POSTGRES_USER\" -d lab_prisma -Atc 'SELECT 1' >/dev/null",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: app_user
+      DB_PASSWORD: ${APP_USER_PASSWORD:-app_dev_password}
+      LISTEN_PORT: "6432"
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "6"
+      MAX_PREPARED_STATEMENTS: "200"
+      MAX_CLIENT_CONN: "200"
+      AUTH_TYPE: scram-sha-256
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    ports:
+      - "127.0.0.1:${PGBOUNCER_PORT:-6432}:6432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=\"$$DB_PASSWORD\" psql -h 127.0.0.1 -p 6432 -U \"$$DB_USER\" -d lab_drizzle -Atc 'SELECT 1' >/dev/null && PGPASSWORD=\"$$DB_PASSWORD\" psql -h 127.0.0.1 -p 6432 -U \"$$DB_USER\" -d lab_prisma -Atc 'SELECT 1' >/dev/null",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pg_data:

@@ -1,0 +1,26 @@
+{
+  "name": "auditstream-lab-hono-drizzle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "node dist/hono-drizzle/src/migrate.js",
+    "start": "node dist/hono-drizzle/src/index.js"
+  },
+  "dependencies": {
+    "@auditstream/drizzle": "^0.2.1",
+    "@auditstream/node": "^0.2.1",
+    "@hono/node-server": "2.1.11",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.20",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "typescript": "~6.0.3"
+  }
+}
